@@ -121,7 +121,7 @@ public class MenuHandler extends Plugin {
 			}
 		}
 		this.menuItems.put(new Integer(itemId), new MenuItemWrapper(itemId, title, iconResId));
-		this.enableMenus();
+		this.setMenusEnabled(true);
 	}
 	
 	public void removeMenuItem(int itemId) {
@@ -130,7 +130,7 @@ public class MenuHandler extends Plugin {
 	
 	public void clearMenuItems() {
 		this.menuItems.clear();
-		this.disableMenus();
+		this.setMenusEnabled(false);
 	}
 	
 	public void setMenusEnabled(boolean enabled) {
