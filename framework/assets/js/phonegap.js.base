@@ -409,16 +409,12 @@ PhoneGap.callbackStatus = {
  * @param {String} service      The name of the service to use
  * @param {String} action       Action to be run in PhoneGap
  * @param {String[]} [args]     Zero or more arguments to pass to the method
- * @param {Boolean} persist		Whether we should retain the callback after it's been called once.
  */
-PhoneGap.exec = function(success, fail, service, action, args, persist) {
+PhoneGap.exec = function(success, fail, service, action, args) {
     try {
         var callbackId = service + PhoneGap.callbackId++;
         if (success || fail) {
-			if (typeof persist == 'undefined') {
-				persist = false;
-			}
-            PhoneGap.callbacks[callbackId] = {success:success, fail:fail, persist: persist};
+			PhoneGap.callbacks[callbackId] = {success:success, fail:fail};
         }
         
         // Note: Device returns string, but for some reason emulator returns object - so convert to string.
@@ -433,7 +429,6 @@ PhoneGap.exec = function(success, fail, service, action, args, persist) {
 
                 // If there is a success callback, then call it now with returned value
                 if (success) {
-
                     try {
                         success(v.message);
                     }
@@ -484,15 +479,6 @@ PhoneGap.exec = function(success, fail, service, action, args, persist) {
     }
 };
 
-/**
- * Removes a callback. Calls from native code for the command will then be silently ignored.
- *
- * @param {String} callbackId The id of the callback to remove
- */
-
-PhoneGap.removeCallback = function(callbackId) {
-	delete PhoneGap.callbacks[callbackId];
-}
 
 /**
  * Called by native code when returning successful result from an action.
