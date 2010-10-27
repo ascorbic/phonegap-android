@@ -89,10 +89,19 @@ public final class PluginManager {
 							try {
 								// Call execute on the plugin so that it can do it's thing
 								PluginResult cr = plugin.execute(action, args, callbackId);
-								// Check the status for 0 (success) or otherwise
-								if (cr.getStatus() == 0) {
+								int status = cr.getStatus();
+
+								// If no result to be sent and keeping callback, then no need to sent back to JavaScript
+								if ((status == PluginResult.Status.NO_RESULT.ordinal()) && cr.getKeepCallback()) {
+								}
+
+								// Check the success (OK, NO_RESULT & !KEEP_CALLBACK)
+								else if ((status == PluginResult.Status.OK.ordinal()) || (status == PluginResult.Status.NO_RESULT.ordinal())) {
 									ctx.sendJavascript(cr.toSuccessCallbackString(callbackId));
-								} else {
+								} 
+								
+								// If error
+								else {
 									ctx.sendJavascript(cr.toErrorCallbackString(callbackId));
 								}
 							} catch (Exception e) {
@@ -106,6 +115,11 @@ public final class PluginManager {
 				} else {
 					// Call execute on the plugin so that it can do it's thing
 					cr = plugin.execute(action, args, callbackId);
+
+					// If no result to be sent and keeping callback, then no need to sent back to JavaScript
+					if ((cr.getStatus() == PluginResult.Status.NO_RESULT.ordinal()) && cr.getKeepCallback()) {
+						return "";
+					}
 				}
 			}
 		} catch (ClassNotFoundException e) {
