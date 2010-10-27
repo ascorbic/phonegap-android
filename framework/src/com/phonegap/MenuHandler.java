@@ -88,22 +88,34 @@ public class MenuHandler extends Plugin {
 		return true;
 	}
 	
+	/**
+	 * Sets the function that is called when a menu item is selected
+	 *
+	 * @param callbackId The key used by javascript to identify the callback
+	 */
+	
 	public void watch(String callbackId) {
 		Log.d("PhoneGapLog", "watching: " + callbackId);
 		this.callbackId = callbackId;
 	}
+	
+	/**
+	 * Add an item to the menu. This takes effect next time the menu is displayed.
+	 *
+	 * @param itemId The unique identifer for the menu item
+	 * @param title The text of the menu item
+	 * @param icon The fully-qualified name of the variable holding the icon resource id
+	 */
 	
 	public void addMenuItem(int itemId, String title, String icon) {
 		int iconResId = 0;
 		if(icon != null) {
 			try {
 				int dot = icon.lastIndexOf(".");
-				Log.d("PhoneGapLog", "Dot: " + dot);
 				
 				if(dot > -1) {
 					String className = icon.substring(0, dot);
 					String fieldName = icon.substring(dot + 1);
-					Log.d("PhoneGapLog", "className: " + className + " fieldName: " + fieldName);
 					
 					Class<?> cla = Class.forName(className);
 					Field field = cla.getField(fieldName);
@@ -124,18 +136,42 @@ public class MenuHandler extends Plugin {
 		this.setMenusEnabled(true);
 	}
 	
+	/**
+	 * Removes an item from the menu.
+	 *
+	 * @param itemId The unique identifer for the menu item
+	 */
+	
 	public void removeMenuItem(int itemId) {
 		this.menuItems.remove(new Integer(itemId));
 	}
+	
+	/**
+	 * Removes all items from the menu and disables it
+	 *
+	 */
 	
 	public void clearMenuItems() {
 		this.menuItems.clear();
 		this.setMenusEnabled(false);
 	}
 	
+	/**
+	 * Sets whether the menus will be displayed
+	 *
+	 * @param enabled Should menus be displayed
+	 */
+	
 	public void setMenusEnabled(boolean enabled) {
 		this.ctx.setMenuEnabled(enabled);
 	}
+	
+	/**
+	 * Enables or disables and hides a menu item 
+	 *
+	 * @param itemId The unique identifer for the menu item
+	 * @param enabled Whether the item should be displayed
+	 */
 	
 	public void setMenuItemEnabled(int itemId, boolean enabled) {
 		Integer key = new Integer(itemId);
