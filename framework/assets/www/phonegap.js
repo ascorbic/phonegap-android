@@ -238,7 +238,14 @@ PhoneGap.onDeviceReady = new PhoneGap.Channel('onDeviceReady');
 PhoneGap.Channel.join(function() {
 
     // Start listening for XHR callbacks
-    PhoneGap.JSCallback();
+    setTimeout(function() {
+            if (CallbackServer.usePolling()) {
+                PhoneGap.JSCallbackPolling();
+            }
+            else {
+                PhoneGap.JSCallback();
+            }
+        }, 1);
 
     // Run PhoneGap constructors
     PhoneGap.onPhoneGapInit.fire();
@@ -375,6 +382,19 @@ PhoneGap.clone = function(obj) {
 
 PhoneGap.callbackId = 0;
 PhoneGap.callbacks = {};
+PhoneGap.callbackStatus = {
+    NO_RESULT: 0,
+    OK: 1,
+    CLASS_NOT_FOUND_EXCEPTION: 2,
+    ILLEGAL_ACCESS_EXCEPTION: 3,
+    INSTANTIATION_EXCEPTION: 4,
+    MALFORMED_URL_EXCEPTION: 5,
+    IO_EXCEPTION: 6,
+    INVALID_ACTION: 7,
+    JSON_EXCEPTION: 8,
+    ERROR: 9
+    };
+
 
 /**
  * Execute a PhoneGap command.  It is up to the native side whether this action is synch or async.  
@@ -409,16 +429,33 @@ PhoneGap.exec = function(success, fail, service, action, args, persist) {
             eval("var v="+r+";");
         
             // If status is OK, then return value back to caller
-            if (v.status == 0) {
+            if (v.status == PhoneGap.callbackStatus.OK) {
 
                 // If there is a success callback, then call it now with returned value
                 if (success) {
-                    success(v.message);
-					if(!PhoneGap.callbacks[callbackId].persist) {
-	                    delete PhoneGap.callbacks[callbackId];
-					}
+
+                    try {
+                        success(v.message);
+                    }
+                    catch (e) {
+                        console.log("Error in success callback: "+callbackId+" = "+e);
+                    }
+
+                    // Clear callback if not expecting any more results
+                    if (!v.keepCallback) {
+                        delete PhoneGap.callbacks[callbackId];
+                    }
                 }
                 return v.message;
+            }
+
+            // If no result
+            else if (v.status == PhoneGap.callbackStatus.NO_RESULT) {
+                    
+                // Clear callback if not expecting any more results
+                if (!v.keepCallback) {
+                    delete PhoneGap.callbacks[callbackId];
+                }
             }
 
             // If error, then display error
@@ -427,10 +464,17 @@ PhoneGap.exec = function(success, fail, service, action, args, persist) {
 
                 // If there is a fail callback, then call it now with returned value
                 if (fail) {
-                    fail(v.message);
-					if(!PhoneGap.callbacks[callbackId].persist) {
-	                    delete PhoneGap.callbacks[callbackId];
-					}
+                    try {
+                        fail(v.message);
+                    }
+                    catch (e) {
+                        console.log("Error in error callback: "+callbackId+" = "+e);
+                    }
+
+                    // Clear callback if not expecting any more results
+                    if (!v.keepCallback) {
+                        delete PhoneGap.callbacks[callbackId];
+                    }
                 }
                 return null;
             }
@@ -458,17 +502,23 @@ PhoneGap.removeCallback = function(callbackId) {
  */
 PhoneGap.callbackSuccess = function(callbackId, args) {
     if (PhoneGap.callbacks[callbackId]) {
-        try {
-            if (PhoneGap.callbacks[callbackId].success) {
-                PhoneGap.callbacks[callbackId].success(args.message);
+
+        // If result is to be sent to callback
+        if (args.status == PhoneGap.callbackStatus.OK) {
+            try {
+                if (PhoneGap.callbacks[callbackId].success) {
+                    PhoneGap.callbacks[callbackId].success(args.message);
+                }
+            }
+            catch (e) {
+                console.log("Error in success callback: "+callbackId+" = "+e);
             }
         }
-        catch (e) {
-            console.log("Error in success callback: "+callbackId+" = "+e);
-        }
-		if(!PhoneGap.callbacks[callbackId].persist) {
+    
+        // Clear callback if not expecting any more results
+        if (!args.keepCallback) {
             delete PhoneGap.callbacks[callbackId];
-		}
+        }
     }
 };
 
@@ -488,9 +538,11 @@ PhoneGap.callbackError = function(callbackId, args) {
         catch (e) {
             console.log("Error in error callback: "+callbackId+" = "+e);
         }
-		if(!PhoneGap.callbacks[callbackId].persist) {
+        
+        // Clear callback if not expecting any more results
+        if (!args.keepCallback) {
             delete PhoneGap.callbacks[callbackId];
-		}
+        }
     }
 };
 
@@ -586,6 +638,37 @@ PhoneGap.JSCallback = function() {
 
     xmlhttp.open("GET", "http://127.0.0.1:"+CallbackServer.getPort()+"/" , true);
     xmlhttp.send();
+};
+
+/**
+ * The polling period to use with JSCallbackPolling.
+ * This can be changed by the application.  The default is 50ms.
+ */
+PhoneGap.JSCallbackPollingPeriod = 50;
+
+/**
+ * This is only for Android.
+ *
+ * Internal function that uses polling to call into PhoneGap Java code and retrieve 
+ * any JavaScript code that needs to be run.  This is used for callbacks from
+ * Java to JavaScript.
+ */
+PhoneGap.JSCallbackPolling = function() {
+    var msg = CallbackServer.getJavascript();
+    if (msg) {
+        setTimeout(function() {
+            try {
+                var t = eval(""+msg);
+            }
+            catch (e) {
+                console.log("JSCallbackPolling Error: "+e);
+            }
+        }, 1);
+        setTimeout(PhoneGap.JSCallbackPolling, 1);
+    }
+    else {
+        setTimeout(PhoneGap.JSCallbackPolling, PhoneGap.JSCallbackPollingPeriod);
+    }
 };
 
 /**
@@ -817,8 +900,6 @@ Camera.prototype.getPicture = function(successCallback, errorCallback, options) 
         return;
     }
 
-    this.successCallback = successCallback;
-    this.errorCallback = errorCallback;
     this.options = options;
     var quality = 80;
     if (options.quality) {
@@ -832,40 +913,7 @@ Camera.prototype.getPicture = function(successCallback, errorCallback, options) 
     if (typeof this.options.sourceType == "number") {
         sourceType = this.options.sourceType;
     }
-    PhoneGap.exec(null, null, "Camera", "takePicture", [quality, destinationType, sourceType]);
-};
-
-/**
- * Callback function from native code that is called when image has been captured.
- *
- * @param picture           The base64 encoded string of the image
- */
-Camera.prototype.success = function(picture) {
-    if (this.successCallback) {
-        try {
-            this.successCallback(picture);
-        }
-        catch (e) {
-            console.log("Camera error calling user's success callback: " + e);
-        }
-    }
-};
-
-/**
- * Callback function from native code that is called when there is an error
- * capturing an image, or the capture is cancelled.
- *
- * @param err               The error message
- */
-Camera.prototype.error = function(err) {
-    if (this.errorCallback) {
-        try {
-            this.errorCallback(err);
-        }
-        catch (e) {
-            console.log("Camera error calling user's error callback: " + e);
-        }
-    }
+    PhoneGap.exec(successCallback, errorCallback, "Camera", "takePicture", [quality, destinationType, sourceType]);
 };
 
 PhoneGap.addConstructor(function() {
@@ -2198,6 +2246,121 @@ Media.prototype.startRecord = function() {
 Media.prototype.stopRecord = function() {
     PhoneGap.exec(null, null, "Media", "stopRecordingAudio", [this.id]);
 };
+
+/**
+ * Provides access to the native menus in Android
+ */
+ 
+var Menu = function () {
+	this.menuItems = {};
+	
+}
+
+/**
+ * These are the built-in Android menu icons. There's a number of sites where you can 
+ * preview what they look like, such as http://androiddrawableexplorer.appspot.com/
+ */
+
+Menu.Icon = {
+	ADD:						"android.R$drawable.ic_menu_add",
+	AGENDA:						"android.R$drawable.ic_menu_agenda",
+	ALWAYS_LANDSCAPE_PORTRAIT: 	"android.R$drawable.ic_menu_always_landscape_portrait",
+	CALL:						"android.R$drawable.ic_menu_call",
+	CAMERA:						"android.R$drawable.ic_menu_camera",
+	CLOSE_CLEAR_CANCEL:  	 	"android.R$drawable.ic_menu_close_clear_cancel",
+	COMPASS:					"android.R$drawable.ic_menu_compass",
+	CROP:						"android.R$drawable.ic_menu_crop",
+	DAY:						"android.R$drawable.ic_menu_day",
+	DELETE:						"android.R$drawable.ic_menu_delete",
+	DIRECTIONS:					"android.R$drawable.ic_menu_directions",
+	EDIT:						"android.R$drawable.ic_menu_edit",
+	GALLERY:					"android.R$drawable.ic_menu_gallery",
+	HELP:						"android.R$drawable.ic_menu_help",
+	INFO_DETAILS:				"android.R$drawable.ic_menu_info_details",
+	MANAGE:						"android.R$drawable.ic_menu_manage",
+	MAPMODE:					"android.R$drawable.ic_menu_mapmode",
+	MONTH:						"android.R$drawable.ic_menu_month",
+	MORE:						"android.R$drawable.ic_menu_more",
+	MY_CALENDAR:				"android.R$drawable.ic_menu_my_calendar",
+	MYLOCATION:					"android.R$drawable.ic_menu_mylocation",
+	MYPLACES:					"android.R$drawable.ic_menu_myplaces",
+	PREFERENCES:				"android.R$drawable.ic_menu_preferences",
+	RECENT_HISTORY:            	"android.R$drawable.ic_menu_recent_history",
+	REPORT_IMAGE:				"android.R$drawable.ic_menu_report_image",
+	REVERT:						"android.R$drawable.ic_menu_revert",
+	ROTATE:						"android.R$drawable.ic_menu_rotate",
+	SAVE:						"android.R$drawable.ic_menu_save",
+	SEARCH:						"android.R$drawable.ic_menu_search",
+	SEND:						"android.R$drawable.ic_menu_send",
+	SET_AS:						"android.R$drawable.ic_menu_set_as",
+	SHARE:						"android.R$drawable.ic_menu_share",
+	SLIDESHOW:					"android.R$drawable.ic_menu_slideshow",
+	SORT_ALPHABETICALLY:       	"android.R$drawable.ic_menu_sort_alphabetically",
+	SORT_BY_SIZE:				"android.R$drawable.ic_menu_sort_by_size",
+	TODAY:						"android.R$drawable.ic_menu_today",
+	UPLOAD:						"android.R$drawable.ic_menu_upload",
+	UPLOAD_YOU_TUBE:           	"android.R$drawable.ic_menu_upload_you_tube",
+	VIEW:						"android.R$drawable.ic_menu_view",
+	WEEK:						"android.R$drawable.ic_menu_week",
+	MENU_ZOOM:					"android.R$drawable.ic_menu_zoom"
+}
+
+Menu.itemId = 0;
+
+/**
+ * Adds an item to the native menu that will be displayed next time it is opened.
+ *
+ * @param {Function} callback Called when the menu item is selected. Passed the menu item text.
+ * @param {String} title The (unique) text of the menu item. Keep it short.
+ * @param {String} icon The fully qualified icon resource id. If you're using the built-in icons,
+ * you should use the Menu.Icon constants. You can use your own icons if you put them into your 
+ * project's drawables folder. You then refer to them as com.example.R$drawable.your_icon_name.
+ * e.g. if your icon file is my_icon.png and your project's package is com.mycompany.myproject,
+ * your icon resource will be com.mycompany.myproject.R$drawable.your_icon_name. Icons are only 
+ * displayed for the first six menu items.
+ */
+Menu.prototype.addMenuItem = function(callback, title, icon) {
+	this.menuItems[title] = {
+		win: success,
+		icon: icon,
+		enabled: true,
+		itemId: Menu.itemId++
+	}
+	PhoneGap.exec(null, null, "Menu", "addMenuItem", [this.menuItems[title].itemId, title, icon]);
+}
+
+Menu.prototype.removeMenuItem = function(title) {
+	PhoneGap.exec(null, null, "Menu", "removeMenuItem", [this.menuItems[title].itemId]);
+}
+
+Menu.prototype.clearMenuItems = function() {
+	PhoneGap.exec(null, null, "Menu", "clearMenuItems", []);
+}
+
+Menu.prototype.setMenusEnabled = function(enabled) {
+	PhoneGap.exec(null, null, "Menu", "setMenusEnabled", [enabled]);
+}
+
+Menu.prototype.setMenuItemEnabled = function(title, enabled) {
+	PhoneGap.exec(null, null, "Menu", "setMenuItemEnabled", [this.menuItems[title].itemId, enabled]);
+}
+
+Menu.prototype.callbackSuccess = function(title) {
+	console.log('menu item: ' + title);
+}
+
+Menu.prototype.callbackFail = function(message) {
+	console.log('menu error: ' + message);
+}
+
+PhoneGap.addConstructor(function() {
+	var menu = new Menu();
+	PhoneGap.addPlugin('menu', menu);
+	PluginManager.addService("Menu","com.phonegap.MenuHandler");
+	PhoneGap.exec(menu.callbackSuccess, menu.callbackFail, "Menu", "watch", [], true);
+});
+
+
 
 /*
  * PhoneGap is available under *either* the terms of the modified BSD license *or* the
