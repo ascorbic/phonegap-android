@@ -134,8 +134,8 @@ public class MenuHandler extends Plugin {
 	}
 	
 	public void setMenusEnabled(boolean enabled) {
-		this.ctx.menuEnabled = enabled;
-	} 
+		this.ctx.setMenuEnabled(enabled);
+	}
 	
 	public void setMenuItemEnabled(int itemId, boolean enabled) {
 		Integer key = new Integer(itemId);

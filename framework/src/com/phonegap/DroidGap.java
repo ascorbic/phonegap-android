@@ -78,7 +78,7 @@ public class DroidGap extends Activity {
 
     private Plugin activityResultCallback = null;	// Plugin to call when activity result is received
 
-	public Boolean menuEnabled = false;
+	private Boolean menuEnabled = false;
          
     /** 
      * Called when the activity is first created. 
@@ -240,7 +240,7 @@ public class DroidGap extends Activity {
 	/**
 	 * Called every time the menu is opened. This allows plugins to modify the contents of the menu.
 	 *
-	 * @param Menu menu The menu that's about to be displayed.
+	 * @param menu The menu that's about to be displayed.
 	 */
 	public boolean onPrepareOptionsMenu (Menu menu) {
 		super.onPrepareOptionsMenu(menu);
@@ -254,12 +254,21 @@ public class DroidGap extends Activity {
 	/**
 	 * Called when a menu item is selected
 	 *
-	 * @param MenuItem item The selected item.
+	 * @param item The selected item.
 	 */
 	public boolean onOptionsItemSelected (MenuItem item) {
 		super.onOptionsItemSelected(item);
 		this.pluginManager.onOptionsItemSelected(item);
 		return true;
+	}
+	
+	/**
+	 * Should we display the options menu?
+	 *
+	 * @param boolean 
+	 */
+	public void setMenuEnabled(boolean enabled) {
+		this.menuEnabled = enabled;
 	}
 
     /**
