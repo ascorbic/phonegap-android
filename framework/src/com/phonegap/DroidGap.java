@@ -27,6 +27,8 @@ import android.view.KeyEvent;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.webkit.JsResult;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
@@ -75,6 +77,8 @@ public class DroidGap extends Activity {
     private String baseUrl;						// The base of the initial URL for our app
 
     private Plugin activityResultCallback = null;	// Plugin to call when activity result is received
+
+	public Boolean menuEnabled = false;
          
     /** 
      * Called when the activity is first created. 
@@ -231,6 +235,32 @@ public class DroidGap extends Activity {
     		this.callbackServer.destroy();
     	}
     }
+	
+	@Override
+	/**
+	 * Called every time the menu is opened. This allows plugins to modify the contents of the menu.
+	 *
+	 * @param Menu menu The menu that's about to be displayed.
+	 */
+	public boolean onPrepareOptionsMenu (Menu menu) {
+		super.onPrepareOptionsMenu(menu);
+		if(menuEnabled) {
+			this.pluginManager.onPrepareOptionsMenu(menu);
+		}
+		return menuEnabled;
+	}
+
+	@Override
+	/**
+	 * Called when a menu item is selected
+	 *
+	 * @param MenuItem item The selected item.
+	 */
+	public boolean onOptionsItemSelected (MenuItem item) {
+		super.onOptionsItemSelected(item);
+		this.pluginManager.onOptionsItemSelected(item);
+		return true;
+	}
 
     /**
      * Add a class that implements a service.
@@ -275,7 +305,6 @@ public class DroidGap extends Activity {
         this.addService("Notification", "com.phonegap.Notification");
         this.addService("Storage", "com.phonegap.Storage");
         this.addService("Temperature", "com.phonegap.TempListener");
-
     }
         
     /**

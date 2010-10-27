@@ -11,6 +11,8 @@ import org.json.JSONArray;
 import com.phonegap.DroidGap;
 import android.content.Intent;
 import android.webkit.WebView;
+import android.view.Menu;
+import android.view.MenuItem;
 
 /**
  * Plugin interface must be implemented by any plugin classes.
@@ -67,6 +69,20 @@ public interface IPlugin {
      * The final call you receive before your activity is destroyed. 
      */
     void onDestroy();
+
+	/**
+	 * Called every time the menu is opened. This allows plugins to modify the contents of the menu.
+	 *
+	 * @param Menu menu The menu that's about to be displayed.
+	 */
+	void onPrepareOptionsMenu (Menu menu);
+
+	/**
+	 * Called when a menu item is selected.
+	 *
+	 * @param MenuItem item The selected item.
+	 */
+	void onOptionsItemSelected (MenuItem item);
 	
     /**
      * Called when an activity you launched exits, giving you the requestCode you started it with,

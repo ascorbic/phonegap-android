@@ -15,6 +15,8 @@ import org.json.JSONException;
 
 import android.webkit.WebView;
 import com.phonegap.DroidGap;
+import android.view.Menu;
+import android.view.MenuItem;
 
 /**
  * PluginManager is exposed to JavaScript in the PhoneGap WebView.
@@ -258,4 +260,36 @@ public final class PluginManager {
     		plugin.onDestroy();
     	}
     }
+
+    /**
+     * Called every time the menu is opened. This allows plugins to modify the contents of the menu.
+	 *
+	 * @param Menu menu The menu that's about to be displayed.
+     */
+    public void onPrepareOptionsMenu (Menu menu) {
+    	java.util.Set<Entry<String,Plugin>> s = this.plugins.entrySet();
+    	java.util.Iterator<Entry<String,Plugin>> it = s.iterator();
+    	while(it.hasNext()) {
+    		Entry<String,Plugin> entry = it.next();
+    		Plugin plugin = entry.getValue();
+    		plugin.onPrepareOptionsMenu (menu);
+    	}
+    }
+
+    /**
+     * Called when a menu item is selected.
+	 *
+	 * @param MenuItem item The selected item.
+     */
+    public void onOptionsItemSelected (MenuItem item) {
+    	java.util.Set<Entry<String,Plugin>> s = this.plugins.entrySet();
+    	java.util.Iterator<Entry<String,Plugin>> it = s.iterator();
+    	while(it.hasNext()) {
+    		Entry<String,Plugin> entry = it.next();
+    		Plugin plugin = entry.getValue();
+    		plugin.onOptionsItemSelected (item);
+    	}
+    }
+
+
 }
