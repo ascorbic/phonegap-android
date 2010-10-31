@@ -49,6 +49,8 @@ public class MenuHandler extends Plugin {
 	 */
 	public PluginResult execute(String action, JSONArray args, String callbackId) {
 		try {
+			PluginResult result = new PluginResult(PluginResult.Status.NO_RESULT, "");
+			
 			if (action.equals("addMenuItem")) {
 				String icon = null;
 				if(args.length() == 3) {
@@ -70,9 +72,10 @@ public class MenuHandler extends Plugin {
 			}
 			else if (action.equals("watch")) {
 				this.watch(callbackId);
+				result.setKeepCallback(true);
 			}
 			
-			return new PluginResult(PluginResult.Status.OK, "");
+			return result;
 		} catch (JSONException e) {
 			return new PluginResult(PluginResult.Status.JSON_EXCEPTION);
 		}
@@ -95,7 +98,6 @@ public class MenuHandler extends Plugin {
 	 */
 	
 	public void watch(String callbackId) {
-		Log.d("PhoneGapLog", "watching: " + callbackId);
 		this.callbackId = callbackId;
 	}
 	
@@ -203,11 +205,10 @@ public class MenuHandler extends Plugin {
 	 *
 	 * @param MenuItem item The selected item.
      */
-    public void onOptionsItemSelected (MenuItem item) {
-		Log.d("PhoneGapLog", "menuitem callback: " + this.callbackId);
-	
+    public void onOptionsItemSelected (MenuItem item) {	
 		if(this.callbackId != null) {
 			PluginResult result = new PluginResult(PluginResult.Status.OK, item.getTitle().toString());
+			result.setKeepCallback(true);
 			this.success(result, this.callbackId);
 		}
 	}
