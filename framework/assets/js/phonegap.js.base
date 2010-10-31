@@ -238,7 +238,14 @@ PhoneGap.onDeviceReady = new PhoneGap.Channel('onDeviceReady');
 PhoneGap.Channel.join(function() {
 
     // Start listening for XHR callbacks
-    PhoneGap.JSCallback();
+    setTimeout(function() {
+            if (CallbackServer.usePolling()) {
+                PhoneGap.JSCallbackPolling();
+            }
+            else {
+                PhoneGap.JSCallback();
+            }
+        }, 1);
 
     // Run PhoneGap constructors
     PhoneGap.onPhoneGapInit.fire();
@@ -375,6 +382,19 @@ PhoneGap.clone = function(obj) {
 
 PhoneGap.callbackId = 0;
 PhoneGap.callbacks = {};
+PhoneGap.callbackStatus = {
+    NO_RESULT: 0,
+    OK: 1,
+    CLASS_NOT_FOUND_EXCEPTION: 2,
+    ILLEGAL_ACCESS_EXCEPTION: 3,
+    INSTANTIATION_EXCEPTION: 4,
+    MALFORMED_URL_EXCEPTION: 5,
+    IO_EXCEPTION: 6,
+    INVALID_ACTION: 7,
+    JSON_EXCEPTION: 8,
+    ERROR: 9
+    };
+
 
 /**
  * Execute a PhoneGap command.  It is up to the native side whether this action is synch or async.  
@@ -405,14 +425,32 @@ PhoneGap.exec = function(success, fail, service, action, args) {
             eval("var v="+r+";");
         
             // If status is OK, then return value back to caller
-            if (v.status == 0) {
+            if (v.status == PhoneGap.callbackStatus.OK) {
 
                 // If there is a success callback, then call it now with returned value
                 if (success) {
-                    success(v.message);
-                    delete PhoneGap.callbacks[callbackId];
+                    try {
+                        success(v.message);
+                    }
+                    catch (e) {
+                        console.log("Error in success callback: "+callbackId+" = "+e);
+                    }
+
+                    // Clear callback if not expecting any more results
+                    if (!v.keepCallback) {
+                        delete PhoneGap.callbacks[callbackId];
+                    }
                 }
                 return v.message;
+            }
+
+            // If no result
+            else if (v.status == PhoneGap.callbackStatus.NO_RESULT) {
+                    
+                // Clear callback if not expecting any more results
+                if (!v.keepCallback) {
+                    delete PhoneGap.callbacks[callbackId];
+                }
             }
 
             // If error, then display error
@@ -421,8 +459,17 @@ PhoneGap.exec = function(success, fail, service, action, args) {
 
                 // If there is a fail callback, then call it now with returned value
                 if (fail) {
-                    fail(v.message);
-                    delete PhoneGap.callbacks[callbackId];
+                    try {
+                        fail(v.message);
+                    }
+                    catch (e) {
+                        console.log("Error in error callback: "+callbackId+" = "+e);
+                    }
+
+                    // Clear callback if not expecting any more results
+                    if (!v.keepCallback) {
+                        delete PhoneGap.callbacks[callbackId];
+                    }
                 }
                 return null;
             }
@@ -440,15 +487,23 @@ PhoneGap.exec = function(success, fail, service, action, args) {
  */
 PhoneGap.callbackSuccess = function(callbackId, args) {
     if (PhoneGap.callbacks[callbackId]) {
-        try {
-            if (PhoneGap.callbacks[callbackId].success) {
-                PhoneGap.callbacks[callbackId].success(args.message);
+
+        // If result is to be sent to callback
+        if (args.status == PhoneGap.callbackStatus.OK) {
+            try {
+                if (PhoneGap.callbacks[callbackId].success) {
+                    PhoneGap.callbacks[callbackId].success(args.message);
+                }
+            }
+            catch (e) {
+                console.log("Error in success callback: "+callbackId+" = "+e);
             }
         }
-        catch (e) {
-            console.log("Error in success callback: "+callbackId+" = "+e);
+    
+        // Clear callback if not expecting any more results
+        if (!args.keepCallback) {
+            delete PhoneGap.callbacks[callbackId];
         }
-        delete PhoneGap.callbacks[callbackId];
     }
 };
 
@@ -468,7 +523,11 @@ PhoneGap.callbackError = function(callbackId, args) {
         catch (e) {
             console.log("Error in error callback: "+callbackId+" = "+e);
         }
-        delete PhoneGap.callbacks[callbackId];
+        
+        // Clear callback if not expecting any more results
+        if (!args.keepCallback) {
+            delete PhoneGap.callbacks[callbackId];
+        }
     }
 };
 
@@ -519,6 +578,9 @@ PhoneGap.run_command = function() {
 
 };
 
+PhoneGap.JSCallbackPort = CallbackServer.getPort();
+PhoneGap.JSCallbackToken = CallbackServer.getToken();
+
 /**
  * This is only for Android.
  *
@@ -542,6 +604,8 @@ PhoneGap.JSCallback = function() {
                         var t = eval(msg);
                     }
                     catch (e) {
+                        // If we're getting an error here, seeing the message will help in debugging
+                        console.log("Message from Server: " + msg);
                         console.log("JSCallback Error: "+e);
                     }
                 }, 1);
@@ -562,8 +626,39 @@ PhoneGap.JSCallback = function() {
         }
     }
 
-    xmlhttp.open("GET", "http://127.0.0.1:"+CallbackServer.getPort()+"/" , true);
+    xmlhttp.open("GET", "http://127.0.0.1:"+PhoneGap.JSCallbackPort+"/"+PhoneGap.JSCallbackToken , true);
     xmlhttp.send();
+};
+
+/**
+ * The polling period to use with JSCallbackPolling.
+ * This can be changed by the application.  The default is 50ms.
+ */
+PhoneGap.JSCallbackPollingPeriod = 50;
+
+/**
+ * This is only for Android.
+ *
+ * Internal function that uses polling to call into PhoneGap Java code and retrieve 
+ * any JavaScript code that needs to be run.  This is used for callbacks from
+ * Java to JavaScript.
+ */
+PhoneGap.JSCallbackPolling = function() {
+    var msg = CallbackServer.getJavascript();
+    if (msg) {
+        setTimeout(function() {
+            try {
+                var t = eval(""+msg);
+            }
+            catch (e) {
+                console.log("JSCallbackPolling Error: "+e);
+            }
+        }, 1);
+        setTimeout(PhoneGap.JSCallbackPolling, 1);
+    }
+    else {
+        setTimeout(PhoneGap.JSCallbackPolling, PhoneGap.JSCallbackPollingPeriod);
+    }
 };
 
 /**
