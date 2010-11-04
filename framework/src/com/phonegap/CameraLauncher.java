@@ -12,6 +12,8 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.InputStream;
+
 
 import org.apache.commons.codec.binary.Base64;
 import org.json.JSONArray;
@@ -45,6 +47,7 @@ public class CameraLauncher extends Plugin {
 	
 	private int mQuality;					// Compression quality hint (0-100: 0=low quality & high compression, 100=compress of max quality)
 	private Uri imageUri;					// Uri of captured image 
+	private String imagePath;				// Absolue path of the captured image
 	public String callbackId;
 	
     /**
@@ -118,8 +121,10 @@ public class CameraLauncher extends Plugin {
         Intent intent = new Intent("android.media.action.IMAGE_CAPTURE");
         
         // Specify file so that large image is captured and returned
+		// Note this bug though: http://code.google.com/p/android/issues/detail?id=1480
         // TODO: What if there isn't any external storage?
         File photo = new File(Environment.getExternalStorageDirectory(),  "Pic.jpg");
+		this.imagePath = photo.getAbsolutePath();
         intent.putExtra(android.provider.MediaStore.EXTRA_OUTPUT, Uri.fromFile(photo));
         this.imageUri = Uri.fromFile(photo);
 
@@ -161,41 +166,52 @@ public class CameraLauncher extends Plugin {
 			// If image available
 			if (resultCode == Activity.RESULT_OK) {
 				try {
-					// Read in bitmap of captured image
-					Bitmap bitmap = android.provider.MediaStore.Images.Media.getBitmap(this.ctx.getContentResolver(), imageUri);
+					
+					if (this.mQuality < 50) {
+					
+						// Read in bitmap of captured image
+						Bitmap bitmap = android.provider.MediaStore.Images.Media.getBitmap(this.ctx.getContentResolver(), imageUri);
 
-					// If sending base64 image back
-					if (destType == DATA_URL) {
-						this.processPicture(bitmap);
-					}
-
-					// If sending filename back
-					else if (destType == FILE_URI){
-						// Create entry in media store for image
-						// (Don't use insertImage() because it uses default compression setting of 50 - no way to change it)
-						ContentValues values = new ContentValues();
-						values.put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/jpeg");
-						Uri uri = null;
-						try {
-							uri = this.ctx.getContentResolver().insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
-						} catch (UnsupportedOperationException e) {
-							System.out.println("Can't write to external media storage.");
-							try {
-								uri = this.ctx.getContentResolver().insert(android.provider.MediaStore.Images.Media.INTERNAL_CONTENT_URI, values);
-							} catch (UnsupportedOperationException ex) {
-								System.out.println("Can't write to internal media storage.");							
-								this.failPicture("Error capturing image - no media storage found.");
-								return;
-							}
+						// If sending base64 image back
+						if (destType == DATA_URL) {
+							this.processPicture(bitmap);
 						}
 
-						// Add compressed version of captured image to returned media store Uri
-						OutputStream os = this.ctx.getContentResolver().openOutputStream(uri);
-						bitmap.compress(Bitmap.CompressFormat.JPEG, this.mQuality, os);
-						os.close();
+						// If sending filename back
+						else if (destType == FILE_URI){
+							// Create entry in media store for image
+							// (Don't use insertImage() because it uses default compression setting of 50 - no way to change it)
+							ContentValues values = new ContentValues();
+							values.put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/jpeg");
+							Uri uri = null;
+							try {
+								uri = this.ctx.getContentResolver().insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
+							} catch (UnsupportedOperationException e) {
+								System.out.println("Can't write to external media storage.");
+								try {
+									uri = this.ctx.getContentResolver().insert(android.provider.MediaStore.Images.Media.INTERNAL_CONTENT_URI, values);
+								} catch (UnsupportedOperationException ex) {
+									System.out.println("Can't write to internal media storage.");							
+									this.failPicture("Error capturing image - no media storage found.");
+									return;
+								}
+							}
 
-						// Send Uri back to JavaScript for viewing image
-						this.success(new PluginResult(PluginResult.Status.OK, uri.toString()), this.callbackId);
+							// Add compressed version of captured image to returned media store Uri
+							OutputStream os = this.ctx.getContentResolver().openOutputStream(uri);
+							bitmap.compress(Bitmap.CompressFormat.JPEG, this.mQuality, os);
+							os.close();
+
+							// Send Uri back to JavaScript for viewing image
+							this.success(new PluginResult(PluginResult.Status.OK, uri.toString()), this.callbackId);
+						}
+					} else {
+						String url = android.provider.MediaStore.Images.Media.insertImage(this.ctx.getContentResolver(), this.imagePath, null, null);
+						if (destType == DATA_URL) {
+							this.sendDataFromUri(Uri.parse(url));
+						} else if (destType == FILE_URI){
+							this.success(new PluginResult(PluginResult.Status.OK, url), this.callbackId);
+						}
 					}
 				} catch (IOException e) {
 					e.printStackTrace();
@@ -218,15 +234,19 @@ public class CameraLauncher extends Plugin {
 		else if ((srcType == PHOTOLIBRARY) || (srcType == SAVEDPHOTOALBUM)) {
 			if (resultCode == Activity.RESULT_OK) {
 				Uri uri = intent.getData();
-				android.content.ContentResolver resolver = this.ctx.getContentResolver();
 				// If sending base64 image back
 				if (destType == DATA_URL) {
-					try {
-						Bitmap bitmap =	android.graphics.BitmapFactory.decodeStream(resolver.openInputStream(uri));
-						this.processPicture(bitmap);
-					} catch (FileNotFoundException e) {
-						e.printStackTrace();
-						this.failPicture("Error retrieving image.");
+					if (this.mQuality < 50) {
+						android.content.ContentResolver resolver = this.ctx.getContentResolver();
+						try {
+							Bitmap bitmap =	android.graphics.BitmapFactory.decodeStream(resolver.openInputStream(uri));
+							this.processPicture(bitmap);
+						} catch (FileNotFoundException e) {
+							e.printStackTrace();
+							this.failPicture("Error retrieving image.");
+						}
+					} else {
+						this.sendDataFromUri(uri);
 					}
 				}
 				
@@ -241,6 +261,30 @@ public class CameraLauncher extends Plugin {
 			else {
 				this.failPicture("Selection did not complete!");				
 			}
+		}
+	}
+	
+	/**
+	 * Loads the data from the Uri, base64 encodes it, then sends it to Javascript.
+	 * 
+	 * @param uri The content Uri pointing at the data to send.
+	 */
+	public void sendDataFromUri(Uri uri) {
+		try {
+			InputStream is = this.ctx.getContentResolver().openInputStream(uri);
+			byte[] data = new byte[is.available()];
+			if(is.read(data) > -1) {
+				byte[] output = Base64.encodeBase64(data);
+				String out = new String(output);
+				this.success(new PluginResult(PluginResult.Status.OK, out), this.callbackId);
+			}
+			
+		} catch (FileNotFoundException e) {
+			e.printStackTrace();
+			this.failPicture("Error retrieving image.");
+		} catch (IOException e) {
+			e.printStackTrace();
+			this.failPicture("Error retrieving image.");
 		}
 	}
 	
