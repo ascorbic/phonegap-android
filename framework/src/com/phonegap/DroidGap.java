@@ -9,10 +9,7 @@ package com.phonegap;
 
 
 
-import com.phonegap.api.Plugin;
-import com.phonegap.api.PluginManager;
 
-import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.DialogInterface;
@@ -37,6 +34,9 @@ import android.webkit.GeolocationPermissions.Callback;
 import android.webkit.WebSettings.LayoutAlgorithm;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import com.phonegap.api.Plugin;
+import com.phonegap.api.PluginManager;
+import com.phonegap.api.PhonegapActivity;
 
 /**
  * This class is the main Android activity that represents the PhoneGap
@@ -58,7 +58,7 @@ import android.widget.LinearLayout;
  *       }
  *     }
  */
-public class DroidGap extends Activity {
+public class DroidGap extends PhonegapActivity {
 
     private static final String LOG_TAG = "DroidGap";
 
@@ -110,6 +110,14 @@ public class DroidGap extends Activity {
         initWebView();
         root.addView(this.appView);
         setContentView(root);        
+        
+        // If URL was passed in to intent, then load it
+        Uri uri = this.getIntent().getData();
+        if (uri != null) {
+            System.out.println("Loading initial URI="+uri.toString());
+        	this.loadUrl(uri.toString());
+        }
+
 	}
 	
     /**
